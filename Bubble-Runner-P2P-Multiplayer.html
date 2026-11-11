@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bubble Runner - P2P Multiplayer</title>
+    <!-- PeerJS Library for WebRTC -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0a0a1a;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* UI Layer */
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            pointer-events: none;
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.8);
+            z-index: 10;
+            display: none;
+        }
+
+        .hud-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 5px;
+        }
+
+        .score-label {
+            font-size: 12px;
+            opacity: 0.6;
+            letter-spacing: 2px;
+            width: 60px;
+        }
+
+        .score-val {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        /* Health/Energy Bar */
+        .health-container {
+            width: 200px;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #health-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #00ffff, #00aa55);
+            transition: width 0.2s ease-out;
+            box-shadow: 0 0 10px #00ffff;
+        }
+
+        /* Lobby Styles */
+        #lobby {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #000 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            transition: opacity 0.5s;
+        }
+
+        h1 { 
+            color: #fff; 
+            font-size: 60px; 
+            margin-bottom: 10px; 
+            text-transform: uppercase; 
+            letter-spacing: 10px; 
+            text-shadow: 0 0 20px #00ffff;
+        }
+
+        p.subtitle {
+            color: #aaa;
+            margin-bottom: 50px;
+            letter-spacing: 2px;
+        }
+
+        button.menu-btn {
+            padding: 15px 50px;
+            font-size: 24px;
+            background: transparent;
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            cursor: pointer;
+            font-family: inherit;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            transition: all 0.2s;
+            margin: 10px;
+            min-width: 200px;
+        }
+
+        button.menu-btn:hover {
+            background: #00ffff;
+            color: #000;
+            box-shadow: 0 0 30px #00ffff;
+            transform: scale(1.05);
+        }
+
+        button.secondary-btn {
+            border-color: #ff0055;
+            color: #ff0055;
+        }
+        
+        button.secondary-btn:hover {
+            background: #ff0055;
+            color: #fff;
+            box-shadow: 0 0 30px #ff0055;
+        }
+
+        #controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            text-align: center;
+            z-index: 10;
+            display: none;
+        }
+
+        /* Game Over Overlay */
+        #game-over {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 150;
+        }
+
+        #game-over h1 { color: #ff0055; text-shadow: 0 0 20px #ff0055; }
+
+        /* --- CHAT SYSTEM STYLES --- */
+        
+        /* Collapsed State (Button) */
+        #chat-toggle-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: #00ffff;
+            border: none;
+            border-radius: 5px;
+            color: #000;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 50;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+
+        #chat-toggle-btn:hover {
+            transform: scale(1.1);
+        }
+
+        /* Expanded State (Full Window) */
+        #chat-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 350px;
+            height: 250px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #00ffff;
+            border-radius: 5px;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            z-index: 50;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+            backdrop-filter: blur(4px);
+        }
+
+        #chat-messages {
+            flex-grow: 1;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 12px;
+            color: #ccc;
+            display: flex;
+            flex-direction: column-reverse; /* Newest at bottom visually */
+        }
+
+        /* Scrollbar styling */
+        #chat-messages::-webkit-scrollbar {
+            width: 5px;
+        }
+        #chat-messages::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.3);
+        }
+        #chat-messages::-webkit-scrollbar-thumb {
+            background: #00ffff;
+        }
+
+        .msg {
+            margin-bottom: 4px;
+            word-wrap: break-word;
+        }
+        .msg.system { color: #ffcc00; font-weight: bold; }
+        .msg.player { color: #00ffff; }
+        .msg.error { color: #ff0055; }
+        .msg.remote { color: #ff00ff; } /* Color for remote player messages */
+
+        #chat-input-area {
+            display: flex;
+            border-top: 1px solid #00ffff;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        #chat-prefix {
+            padding: 8px 10px;
+            color: #00ffff;
+            font-weight: bold;
+        }
+
+        #chat-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            color: #fff;
+            padding: 8px 10px;
+            font-family: inherit;
+            outline: none;
+        }
+
+        #chat-input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Multiplayer UI */
+        #multiplayer-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            border: 1px solid #00ffff;
+            padding: 10px;
+            z-index: 60;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #mp-id-display {
+            font-size: 12px;
+            color: #00ffff;
+            word-break: break-all;
+        }
+        
+        .copy-btn {
+            background: #00ffff;
+            border: none;
+            padding: 2px 5px;
+            cursor: pointer;
+            font-size: 10px;
+            color: #000;
+        }
+
+        #remote-player-indicator {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ff00ff;
+            font-size: 12px;
+            display: none;
+            z-index: 10;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Lobby -->
+    <div id="lobby">
+        <h1>BUBBLE RUNNER</h1>
+        <p class="subtitle">FLUID DYNAMICS PROTOCOL</p>
+        <button class="menu-btn" onclick="startGame()">Single Player</button>
+        <button class="menu-btn secondary-btn" onclick="showMultiplayerMenu()">Multiplayer</button>
+        <button class="menu-btn secondary-btn" style="border-color: #ff0055; color: #ff0055;" onclick="exitGame()">Terminate</button>
+    </div>
+
+    <!-- Multiplayer Menu -->
+    <div id="lobby-multiplayer" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:radial-gradient(circle at center, #1a1a2e 0%, #000 100%); z-index:210; flex-direction:column; justify-content:center; align-items:center;">
+        <h2 style="color:#fff; margin-bottom:20px;">MULTIPLAYER</h2>
+        <button class="menu-btn" onclick="createRoom()">Create Room</button>
+        <div style="margin:20px 0; display:flex; gap:10px; align-items:center;">
+            <input type="text" id="join-room-input" placeholder="Enter Room ID" style="padding:10px; background:#000; border:1px solid #00ffff; color:#fff; width:200px;">
+            <button class="menu-btn" onclick="joinRoom()">Join</button>
+        </div>
+        <button class="menu-btn secondary-btn" onclick="hideMultiplayerMenu()">Back</button>
+    </div>
+
+    <!-- HUD -->
+    <div id="ui-layer">
+        <div class="hud-row">
+            <span class="score-label">DISTANCE</span>
+            <span class="score-val" id="score-display">0m</span>
+        </div>
+        <div class="hud-row">
+            <span class="score-label">INTEGRITY</span>
+            <div class="health-container">
+                <div id="health-fill"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="controls-hint">ARROWS to Move • SPACE to Jump • T for Chat</div>
+    
+    <div id="remote-player-indicator">Remote Player Connected</div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over">
+        <h1>SYSTEM FAILURE</h1>
+        <p style="margin-bottom: 20px; color: #aaa;">Distance: <span id="final-score">0</span>m</p>
+        <button class="restart-btn menu-btn" onclick="resetGame()">Reboot System</button>
+    </div>
+
+    <!-- Chat System -->
+    <!-- Toggle Button (Visible when chat is closed) -->
+    <button id="chat-toggle-btn" onclick="toggleChat()">💬</button>
+
+    <!-- Full Chat Window (Visible when chat is open) -->
+    <div id="chat-container">
+        <div id="chat-messages"></div>
+        <div id="chat-input-area">
+            <span id="chat-prefix">&gt;</span>
+            <input type="text" id="chat-input" placeholder="Type /help for commands..." autocomplete="off">
+        </div>
+    </div>
+
+    <!-- Multiplayer Panel -->
+    <div id="multiplayer-panel">
+        <div style="font-size:12px; color:#fff;">ROOM ID:</div>
+        <div id="mp-id-display">Connecting...</div>
+        <button class="secondary-btn menu-btn" style="padding:5px; font-size:12px; min-width:auto;" onclick="disconnectMultiplayer()">Disconnect</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    // --- Configuration ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let width, height;
+    function resize() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Game State
+    let gameState = {
+        running: false,
+        score: 0,
+        cameraX: 0,
+        shake: 0,
+        lastTime: 0,
+        difficulty: 1,
+        time: 0,
+        chatOpen: false,
+        isMultiplayer: false,
+        isHost: false,
+        remotePlayerId: null
+    };
+
+    // Player Object
+    let player = {
+        x: 100,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        width: 20,
+        height: 20,
+        color: '#00ffff',
+        grounded: false,
+        jumpsLeft: 0,
+        maxJumps: 2,
+        jumpForce: -12,
+        gravity: 0.6,
+        friction: 0.85,
+        speed: 1.2,
+        maxSpeed: 8,
+        facingRight: true,
+        trail: [],
+        invulnerable: 0,
+        health: 100,
+        maxHealth: 100,
+        // Command States
+        flyMode: false,
+        godMode: false,
+        invincible: false
+    };
+
+    // Remote Player Data
+    let remotePlayer = {
+        x: 500,
+        y: 100,
+        vx: 0,
+        vy: 0,
+        grounded: false,
+        facingRight: true,
+        color: '#ff00ff'
+    };
+
+    // World Objects
+    let bubbles = [];
+    let collectibles = [];
+    let particles = [];
+
+    // Input Handling
+    const keys = {};
+    
+    // Global Key Listener for Chat Toggle
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyT') {
+            e.preventDefault();
+            toggleChat();
+        }
+    });
+
+    window.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        
+        if (['Space', 'ArrowUp', 'KeyW'].includes(e.code)) {
+            e.preventDefault();
+            if (player.jumpsLeft > 0 && gameState.running) {
+                jump();
+            }
+        }
+    });
+    window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+    // Chat Logic
+    const chatInput = document.getElementById('chat-input');
+    const chatMessages = document.getElementById('chat-messages');
+    const chatContainer = document.getElementById('chat-container');
+    const chatToggleBtn = document.getElementById('chat-toggle-btn');
+
+    // Ensure Enter works immediately
+    chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !gameState.chatOpen) {
+            processCommand(chatInput.value.trim());
+            chatInput.value = '';
+        }
+    });
+
+    chatInput.addEventListener('focus', () => {
+        gameState.chatOpen = true;
+    });
+
+    chatInput.addEventListener('blur', () => {
+        gameState.chatOpen = false;
+    });
+
+    function toggleChat() {
+        if (gameState.chatOpen) {
+            chatInput.blur(); // Closes chat
+        } else {
+            chatInput.focus(); // Opens chat
+        }
+    }
+
+    // Update visibility based on state
+    function updateChatVisibility() {
+        if (gameState.chatOpen) {
+            chatContainer.style.display = 'flex';
+            chatToggleBtn.style.display = 'none';
+        } else {
+            chatContainer.style.display = 'none';
+            chatToggleBtn.style.display = 'flex';
+        }
+    }
+
+    // Listen for changes to chatOpen state
+    const observer = new MutationObserver(updateChatVisibility);
+    // We manually call updateChatVisibility whenever we change chatOpen status below
+
+    function addMessage(text, type = 'system') {
+        const div = document.createElement('div');
+        div.className = `msg ${type}`;
+        div.innerText = `[${new Date().toLocaleTimeString()}] ${text}`;
+        chatMessages.prepend(div); // Add to top
+        
+        // Keep only last 50 messages
+        if (chatMessages.children.length > 50) {
+            chatMessages.removeChild(chatMessages.lastChild);
+        }
+    }
+
+    function processCommand(cmd) {
+        if (!cmd.startsWith('/')) {
+            addMessage(`Unknown command: ${cmd}`, 'error');
+            return;
+        }
+
+        const args = cmd.substring(1).split(' ');
+        const command = args[0].toLowerCase();
+
+        switch(command) {
+            case 'fly':
+                player.flyMode = !player.flyMode;
+                player.gravity = player.flyMode ? 0 : 0.6;
+                addMessage(`Fly Mode: ${player.flyMode ? 'ON' : 'OFF'}`, 'system');
+                syncState();
+                break;
+            case 'invincible':
+            case 'invinible': // Support the typo too
+                player.invincible = !player.invincible;
+                addMessage(`Invincibility: ${player.invincible ? 'ACTIVE' : 'DEACTIVATED'}`, 'system');
+                syncState();
+                break;
+            case 'godmode':
+                player.godMode = !player.godMode;
+                if (player.godMode) {
+                    player.health = player.maxHealth;
+                    player.invincible = true;
+                    player.flyMode = true;
+                    player.gravity = 0;
+                    player.maxSpeed = 999;
+                    addMessage('GOD MODE ENGAGED', 'system');
+                } else {
+                    player.flyMode = false;
+                    player.gravity = 0.6;
+                    player.maxSpeed = 8;
+                    player.invincible = false;
+                    addMessage('God Mode Disengaged', 'system');
+                }
+                updateHealthBar();
+                syncState();
+                break;
+            case 'help':
+                addMessage('Commands: /fly, /invincible, /invinible, /godmode', 'system');
+                break;
+            default:
+                addMessage(`Unknown command: /${command}`, 'error');
+        }
+    }
+
+    // --- Core Logic ---
+
+    function init() {
+        requestAnimationFrame(loop);
+    }
+
+    function loop(timestamp) {
+        const dt = timestamp - gameState.lastTime;
+        gameState.lastTime = timestamp;
+        gameState.time += 0.05;
+
+        update(dt);
+        draw();
+
+        requestAnimationFrame(loop);
+    }
+
+    function update(dt) {
+        if (!gameState.running) return;
+
+        // --- Player Movement ---
+        
+        // Acceleration
+        if (keys['ArrowRight'] || keys['KeyD']) {
+            player.vx += player.speed;
+            player.facingRight = true;
+        } else if (keys['ArrowLeft'] || keys['KeyA']) {
+            player.vx -= player.speed;
+            player.facingRight = false;
+        } else {
+            player.vx *= player.friction;
+        }
+
+        // Clamp Speed
+        if (player.vx > player.maxSpeed) player.vx = player.maxSpeed;
+        if (player.vx < -player.maxSpeed) player.vx = -player.maxSpeed;
+
+        // Apply Velocity
+        player.x += player.vx;
+        player.y += player.vy;
+
+        // Gravity
+        player.vy += player.gravity;
+
+        // Camera Follow
+        const targetCamX = player.x - width / 3;
+        gameState.cameraX += (targetCamX - gameState.cameraX) * 0.1;
+        if (gameState.cameraX < 0) gameState.cameraX = 0;
+
+        // Screen Shake Decay
+        if (gameState.shake > 0) gameState.shake *= 0.9;
+        if (gameState.shake < 0.5) gameState.shake = 0;
+
+        // --- Collision Detection ---
+        player.grounded = false;
+
+        // Ground Collision
+        const groundY = height - 50;
+        if (player.y + player.height > groundY) {
+            player.y = groundY - player.height;
+            player.vy = 0;
+            player.grounded = true;
+            player.jumpsLeft = player.maxJumps;
+            
+            if (Math.abs(player.vx) > 0.5 || Math.abs(player.vy) > 2) {
+                spawnBubbles(player.x, groundY, 5);
+            }
+        }
+
+        // Collectible Collision
+        for (let i = collectibles.length - 1; i >= 0; i--) {
+            let c = collectibles[i];
+            let dx = player.x - c.x;
+            let dy = player.y - c.y;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            
+            if (dist < (player.width/2 + c.size)) {
+                collectibles.splice(i, 1);
+                gameState.score += 50;
+                createSparkles(c.x, c.y, 10);
+            }
+        }
+
+        // Fall off world
+        if (player.y > height + 200) {
+            if (!player.godMode) {
+                gameOver();
+            } else {
+                // God mode respawn
+                player.y = 100;
+                player.vy = 0;
+                addMessage('God Mode: Respawned', 'system');
+            }
+        }
+
+        // Update Score
+        const currentDist = Math.floor(player.x / 10);
+        if (currentDist > gameState.score) {
+            gameState.score = currentDist;
+            document.getElementById('score-display').innerText = gameState.score + "m";
+            gameState.difficulty = 1 + (gameState.score / 1000);
+        }
+
+        // Generate new terrain
+        const rightEdgeOfScreen = gameState.cameraX + width;
+        
+        if (collectibles.length === 0 || collectibles[collectibles.length-1].x < rightEdgeOfScreen + 500) {
+             generateTerrain(rightEdgeOfScreen);
+        }
+
+        if (collectibles.length > 0 && collectibles[0].x < gameState.cameraX - 500) {
+            collectibles.shift();
+        }
+
+        updateBubbles();
+
+        // Update Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        // Update Trail
+        if (Math.abs(player.vx) > 0.1 || Math.abs(player.vy) > 0.1) {
+            player.trail.push({x: player.x, y: player.y, alpha: 0.5});
+        }
+        if (player.trail.length > 10) player.trail.shift();
+        player.trail.forEach(t => t.alpha -= 0.05);
+        player.trail = player.trail.filter(t => t.alpha > 0);
+        
+        if (player.invulnerable > 0) player.invulnerable--;
+    }
+
+    function jump() {
+        player.vy = player.jumpForce;
+        player.jumpsLeft--;
+        spawnBubbles(player.x, height - 50, 10);
+        gameState.shake = 2;
+        syncState();
+    }
+
+    function generateTerrain(startX) {
+        const gap = Math.random() * 200 + 100;
+        const nextX = startX + gap;
+
+        if (Math.random() < 0.4) {
+            collectibles.push({
+                x: startX + gap + 100,
+                y: height - 150 - (Math.random() * 100),
+                size: 8,
+                bobOffset: Math.random() * Math.PI * 2
+            });
+        }
+    }
+
+    function spawnBubbles(x, y, count) {
+        for(let i=0; i<count; i++) {
+            bubbles.push({
+                x: x + (Math.random()-0.5)*40,
+                y: y - Math.random()*20,
+                radius: Math.random() * 8 + 4,
+                baseY: y,
+                phase: Math.random() * Math.PI * 2,
+                speed: Math.random() * 0.02 + 0.01,
+                amplitude: Math.random() * 5 + 2,
+                life: 1.0,
+                opacity: Math.random() * 0.5 + 0.3
+            });
+        }
+    }
+
+    function updateBubbles() {
+        // Remove old bubbles
+        if (bubbles.length > 0 && bubbles[0].x < gameState.cameraX - 100) {
+            bubbles.shift();
+        }
+
+        // Spawn new ones only on movement/jump
+        if (Math.random() < 0.1 || (Math.abs(player.vx) > 2 && Math.random() < 0.5)) {
+            const spawnX = player.x + (Math.random() * 200 - 100);
+            spawnBubbles(spawnX, height - 50, 1);
+        }
+
+        for (let i = bubbles.length - 1; i >= 0; i--) {
+            let b = bubbles[i];
+            b.y = b.baseY - Math.sin(gameState.time * b.speed * 10 + b.phase) * b.amplitude;
+        }
+    }
+
+    function createSparkles(x, y, count) {
+        for(let i=0; i<count; i++) {
+            particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 8,
+                vy: (Math.random() - 0.5) * 8,
+                life: 1.0,
+                color: '#00ffff',
+                size: Math.random() * 4 + 2
+            });
+        }
+    }
+
+    function draw() {
+        const grad = ctx.createLinearGradient(0, 0, 0, height);
+        grad.addColorStop(0, '#050510');
+        grad.addColorStop(1, '#1a1a2e');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.save();
+        if (gameState.shake > 0) {
+            const dx = (Math.random() - 0.5) * gameState.shake;
+            const dy = (Math.random() - 0.5) * gameState.shake;
+            ctx.translate(dx, dy);
+        }
+
+        // Draw Stars
+        ctx.fillStyle = '#ffffff';
+        for(let i=0; i<50; i++) {
+            let sx = (i * 137.5 - gameState.cameraX * 0.1) % width;
+            if (sx < 0) sx += width;
+            ctx.globalAlpha = Math.random() * 0.5 + 0.2;
+            ctx.beginPath();
+            ctx.arc(sx, (i * 73.1) % height, Math.random() * 1.5, 0, Math.PI*2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        // Draw Bubbles
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#00ffff';
+
+        bubbles.forEach(b => {
+            if (b.x > gameState.cameraX - 50 && b.x < gameState.cameraX + width + 50) {
+                const bGrad = ctx.createRadialGradient(
+                    b.x - gameState.cameraX - b.radius/3, 
+                    b.y - b.radius/3, 
+                    b.radius/10, 
+                    b.x - gameState.cameraX, 
+                    b.y, 
+                    b.radius
+                );
+                bGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                bGrad.addColorStop(0.5, 'rgba(0, 255, 255, 0.4)');
+                bGrad.addColorStop(1, 'rgba(0, 100, 255, 0.1)');
+                
+                ctx.beginPath();
+                ctx.arc(b.x - gameState.cameraX, b.y, b.radius, 0, Math.PI * 2);
+                ctx.fillStyle = bGrad;
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(b.x - gameState.cameraX - b.radius*0.3, b.y - b.radius*0.3, b.radius*0.2, 0, Math.PI*2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.fill();
+            }
+        });
+
+        // Draw Collectibles
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#00ffff';
+        collectibles.forEach(c => {
+            if (c.x > gameState.cameraX && c.x < gameState.cameraX + width) {
+                const bobY = c.y + Math.sin(Date.now() * 0.005 + c.bobOffset) * 5;
+                
+                ctx.fillStyle = '#00ffff';
+                ctx.beginPath();
+                ctx.arc(c.x - gameState.cameraX, bobY, c.size, 0, Math.PI*2);
+                ctx.fill();
+                
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(c.x - gameState.cameraX, bobY, c.size/2, 0, Math.PI*2);
+                ctx.fill();
+            }
+        });
+
+        // Draw Player Trail
+        player.trail.forEach(t => {
+            ctx.fillStyle = `rgba(0, 255, 255, ${t.alpha})`;
+            ctx.fillRect(t.x - gameState.cameraX - player.width/2, t.y - player.height/2, player.width, player.height);
+        });
+
+        // Draw Player
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = player.color;
+        
+        if (player.invulnerable > 0 && Math.floor(Date.now() / 50) % 2 === 0) {
+            ctx.fillStyle = '#ffffff';
+        } else {
+            ctx.fillStyle = player.color;
+        }
+        
+        let scaleX = 1;
+        let scaleY = 1;
+        if (Math.abs(player.vy) > 1) {
+            scaleY = 1 + Math.abs(player.vy) * 0.02;
+            scaleX = 1 - Math.abs(player.vy) * 0.02;
+        }
+        if (Math.abs(player.vx) > 1) {
+            scaleY = 1 - Math.abs(player.vx) * 0.02;
+            scaleX = 1 + Math.abs(player.vx) * 0.02;
+        }
+
+        const px = player.x - gameState.cameraX;
+        const py = player.y;
+        
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.scale(scaleX, scaleY);
+        
+        ctx.fillRect(-player.width/2, -player.height/2, player.width, player.height);
+        
+        ctx.fillStyle = '#000';
+        if (player.facingRight) {
+            ctx.fillRect(2, -4, 4, 4);
+        } else {
+            ctx.fillRect(-6, -4, 4, 4);
+        }
+        
+        ctx.restore();
+
+        // Draw Remote Player
+        if (gameState.isMultiplayer) {
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = remotePlayer.color;
+            ctx.fillStyle = remotePlayer.color;
+            
+            const rpx = remotePlayer.x - gameState.cameraX;
+            const rpy = remotePlayer.y;
+            
+            ctx.save();
+            ctx.translate(rpx, rpy);
+            ctx.scale(1, 1); // Simplified scaling for remote
+            
+            ctx.fillRect(-player.width/2, -player.height/2, player.width, player.height);
+            
+            ctx.fillStyle = '#000';
+            if (remotePlayer.facingRight) {
+                ctx.fillRect(2, -4, 4, 4);
+            } else {
+                ctx.fillRect(-6, -4, 4, 4);
+            }
+            ctx.restore();
+            
+            // Label
+            ctx.fillStyle = '#ff00ff';
+            ctx.font = '10px Courier New';
+            ctx.fillText("REMOTE", rpx - 20, rpy - 20);
+        }
+
+        // Draw Particles
+        particles.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.beginPath();
+            ctx.arc(p.x - gameState.cameraX, p.y, p.size, 0, Math.PI*2);
+            ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+
+        ctx.restore();
+    }
+
+    function gameOver() {
+        gameState.running = false;
+        document.getElementById('game-over').style.display = 'flex';
+        document.getElementById('final-score').innerText = gameState.score;
+    }
+
+    // --- Lobby & Game Control ---
+
+    function startGame() {
+        document.getElementById('lobby').style.opacity = '0';
+        setTimeout(() => {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'block';
+            document.getElementById('controls-hint').style.display = 'block';
+            resetGameLogic();
+            gameState.running = true;
+            gameState.lastTime = performance.now();
+            addMessage('System Initialized. Welcome back.', 'system');
+        }, 500);
+    }
+
+    function exitGame() {
+        document.body.innerHTML = '<div style="color:white; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; background:#000;"><h1>TERMINATED</h1></div>';
+    }
+
+    function resetGame() {
+        document.getElementById('game-over').style.display = 'none';
+        resetGameLogic();
+        gameState.running = true;
+        gameState.lastTime = performance.now();
+    }
+
+    function resetGameLogic() {
+        bubbles = [];
+        collectibles = [];
+        particles = [];
+        gameState.score = 0;
+        gameState.cameraX = 0;
+        gameState.difficulty = 1;
+        document.getElementById('score-display').innerText = "0m";
+        document.getElementById('health-fill').style.width = '100%';
+        
+        // Initial setup
+        player.x = 100;
+        player.y = height - 150;
+        player.vx = 0;
+        player.vy = 0;
+        player.jumpsLeft = player.maxJumps;
+        player.grounded = false;
+        player.trail = [];
+        player.invulnerable = 0;
+        player.health = player.maxHealth;
+        
+        // Reset Commands
+        player.flyMode = false;
+        player.invincible = false;
+        player.godMode = false;
+        player.gravity = 0.6;
+        player.maxSpeed = 8;
+
+        // Pre-generate some bubbles
+        for(let i=0; i<20; i++) {
+            spawnBubbles(i * 50, height - 50, 1);
+        }
+        
+        generateTerrain(width);
+    }
+
+    function updateHealthBar() {
+        const pct = (player.health / player.maxHealth) * 100;
+        document.getElementById('health-fill').style.width = `${pct}%`;
+    }
+
+    // --- Multiplayer Logic (PeerJS) ---
+    let peer = null;
+    let conn = null;
+
+    function showMultiplayerMenu() {
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('lobby-multiplayer').style.display = 'flex';
+    }
+
+    function hideMultiplayerMenu() {
+        document.getElementById('lobby-multiplayer').style.display = 'none';
+        document.getElementById('lobby').style.display = 'flex';
+    }
+
+    function createRoom() {
+        initPeer();
+        peer.on('open', (id) => {
+            document.getElementById('mp-id-display').innerText = id;
+            gameState.isHost = true;
+            gameState.isMultiplayer = true;
+            addMessage(`Room created. ID: ${id}`, 'system');
+            document.getElementById('lobby-multiplayer').style.display = 'none';
+            startGame();
+            document.getElementById('multiplayer-panel').style.display = 'flex';
+            document.getElementById('remote-player-indicator').style.display = 'block';
+        });
+    }
+
+    function joinRoom() {
+        const roomId = document.getElementById('join-room-input').value.trim();
+        if (!roomId) {
+            alert("Please enter a Room ID");
+            return;
+        }
+        initPeer();
+        peer.connect(roomId);
+    }
+
+    function initPeer() {
+        if (peer) return; // Already initialized
+        
+        peer = new Peer();
+        
+        peer.on('open', (id) => {
+            console.log('My peer ID is: ' + id);
+        });
+
+        peer.on('connection', (c) => {
+            // Host receives connection
+            conn = c;
+            setupConnection();
+        });
+
+        peer.on('connect', (c) => {
+            // Joiner connects to host
+            conn = c;
+            setupConnection();
+        });
+
+        peer.on('error', (err) => {
+            console.error(err);
+            addMessage("Connection Error: " + err.type, 'error');
+        });
+    }
+
+    function setupConnection() {
+        conn.on('open', () => {
+            addMessage("Connected to remote player!", 'system');
+            document.getElementById('remote-player-indicator').style.display = 'block';
+            
+            // Send initial state
+            syncState();
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'state') {
+                // Update remote player position
+                remotePlayer.x = data.player.x;
+                remotePlayer.y = data.player.y;
+                remotePlayer.vx = data.player.vx;
+                remotePlayer.vy = data.player.vy;
+                remotePlayer.grounded = data.player.grounded;
+                remotePlayer.facingRight = data.player.facingRight;
+            } else if (data.type === 'message') {
+                addMessage(data.text, 'remote');
+            }
+        });
+
+        conn.on('close', () => {
+            addMessage("Remote player disconnected.", 'system');
+            gameState.isMultiplayer = false;
+            document.getElementById('remote-player-indicator').style.display = 'none';
+        });
+    }
+
+    function syncState() {
+        if (conn && conn.open) {
+            conn.send({
+                type: 'state',
+                player: {
+                    x: player.x,
+                    y: player.y,
+                    vx: player.vx,
+                    vy: player.vy,
+                    grounded: player.grounded,
+                    facingRight: player.facingRight
+                }
+            });
+        }
+    }
+
+    function disconnectMultiplayer() {
+        if (conn) conn.close();
+        if (peer) peer.destroy();
+        peer = null;
+        conn = null;
+        gameState.isMultiplayer = false;
+        gameState.isHost = false;
+        document.getElementById('multiplayer-panel').style.display = 'none';
+        document.getElementById('remote-player-indicator').style.display = 'none';
+        hideMultiplayerMenu();
+    }
+
+    // Start Loop
+    init();
+
+</script>
+</body>
+</html>
